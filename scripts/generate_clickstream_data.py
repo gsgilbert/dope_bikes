@@ -1,63 +1,71 @@
-import os
-from azure.storage.blob import BlobServiceClient
+import json
+import random
+from faker import Faker
+from datetime import datetime, timedelta
 from pathlib import Path
-from dotenv import load_dotenv
-import re
 
-# Load environment variables from .env file
-load_dotenv()
+# Get the directory of the current script
+script_dir = Path(__file__).resolve().parent
 
-# Retrieve the connection string and container name from environment variables
-connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-container_name = os.getenv('AZURE_CONTAINER_NAME')
+# Define the parent directory (dope_bikes)
+parent_dir = script_dir.parent.parent
 
-# Check if the environment variables are loaded correctly
-if not connection_string or not container_name:
-    raise ValueError("Missing required environment variables for Azure Blob Storage.")
+# Construct the path to the raw data directory
+raw_data_dir = parent_dir / 'data' / 'raw'
+raw_data_dir.mkdir(parents=True, exist_ok=True)
 
-local_data_dir = Path(__file__).resolve().parent.parent / 'data' / 'raw'
+fake = Faker()
 
-def extract_date_from_filename(filename):
-    """Extracts date from filename in the format clickstream_YYYYMMDD.json"""
-    match = re.search(r'clickstream_(\d{8})\.json', filename)
-    if match:
-        return match.group(1)
-    return None
+# Subpages for the dopebikes.com website
+subpages = [
+    "home", "products", "products/bike-1", "products/bike-2", "products/bike-3",
+    "cart", "checkout", "search", "contact"
+]
 
-def upload_to_blob():
-    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-    container_client = blob_service_client.get_container_client(container_name)
+# Generate clickstream data for the current day
+clickstream_data = []
+# Determine the date for the current file
+current_date = datetime.now()
+# Randomly decide the number of records for this day
+num_records = random.randint(1500, 2000)
 
-    # Get list of JSON files in the local data directory
-    json_files = sorted(local_data_dir.glob('*.json'), key=lambda f: extract_date_from_filename(f.name))
+for _ in range(num_records):
+    session_id = fake.uuid4()
+    user_id = fake.uuid4()
+    product_id = random.randint(1, 100) if random.random() > 0.7 else None
+    quantity = random.randint(1, 5) if product_id and random.random() > 0.5 else None
+    event_type = random.choice(["page_view", "click", "search", "add_to_cart", "purchase"])
+    
+    event = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "timestamp": (current_date - timedelta(seconds=random.randint(0, 86400))).isoformat(),
+        "page_url": f"https://dopebikes.com/{random.choice(subpages)}",
+        "referrer_url": f"https://dopebikes.com/{random.choice(subpages)}" if random.random() > 0.5 else fake.url(),
+        "event_type": event_type,
+        "product_id": product_id,
+        "quantity": quantity
+    }
+    
+    # Adjust data for specific event types
+    if event_type == "search":
+        event["search_query"] = fake.word()
+    elif event_type == "add_to_cart":
+        event["quantity"] = quantity
+    elif event_type == "purchase":
+        event["order_id"] = fake.uuid4()
+        event["price"] = round(random.uniform(100, 2000), 2)
+    
+    # Remove keys with None values
+    event = {k: v for k, v in event.items() if v is not None}
 
-    # Upload the latest file
-    latest_file = json_files[-1]
-    blob_client = container_client.get_blob_client(latest_file.name)
+    clickstream_data.append(event)
 
-    with open(latest_file, 'rb') as data:
-        blob_client.upload_blob(data, overwrite=True)
+# Save to a JSON file in the raw data directory
+file_name = f'clickstream_{current_date.strftime("%Y%m%d")}.json'
+file_path = raw_data_dir / file_name
+with open(file_path, 'w') as f:
+    json.dump(clickstream_data, f, indent=4)
 
-    print(f"Uploaded {latest_file.name} to {container_name}.")
-
-    # List blobs in the container and sort them by the date in their filename
-    blob_list = list(container_client.list_blobs())
-    blob_list.sort(key=lambda x: extract_date_from_filename(x.name))
-
-    # Ensure only the most recent 5 files are kept
-    if len(blob_list) > 5:
-        blobs_to_delete = blob_list[:-5]
-        for blob in blobs_to_delete:
-            blob_client_to_delete = container_client.get_blob_client(blob.name)
-            blob_client_to_delete.delete_blob()
-            print(f"Deleted {blob.name} from blob storage.")
-
-            # Also delete the corresponding local file if it exists
-            local_file_to_delete = local_data_dir / blob.name
-            if local_file_to_delete.exists():
-                local_file_to_delete.unlink()
-                print(f"Deleted {local_file_to_delete.name} from local storage.")
-
-if __name__ == "__main__":
-    upload_to_blob()
-
+# Print the number of records created and the name of the file
+print(f"Generated {num_records} records for {current_date.strftime('%Y-%m-%d')} and saved to {file_path}")
