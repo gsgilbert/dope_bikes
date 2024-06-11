@@ -2,11 +2,14 @@ import json
 import random
 from faker import Faker
 from datetime import datetime, timedelta
-import os
+from pathlib import Path
 
-# Ensure the raw data directory exists
-raw_data_dir = os.path.join('data', 'raw')
-# os.makedirs(raw_data_dir, exist_ok=True)
+# Get the directory of the current script
+script_dir = Path(__file__).resolve().parent
+
+# Construct the path to the raw data directory
+raw_data_dir = script_dir.parent / 'data' / 'raw'
+raw_data_dir.mkdir(parents=True, exist_ok=True)
 
 fake = Faker()
 
@@ -57,7 +60,7 @@ for _ in range(num_records):
 
 # Save to a JSON file in the raw data directory
 file_name = f'clickstream_{current_date.strftime("%Y%m%d")}.json'
-file_path = os.path.join(raw_data_dir, file_name)
+file_path = raw_data_dir / file_name
 with open(file_path, 'w') as f:
     json.dump(clickstream_data, f, indent=4)
 
