@@ -1,6 +1,7 @@
 import os
 from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -15,7 +16,7 @@ blob_service_client = BlobServiceClient.from_connection_string(connection_string
 container_name = os.getenv('CONTAINER_NAME')
 
 # Directory containing the JSON files
-data_dir = os.path.join("data", "raw")
+data_dir = Path("data") / "raw"
 
 def upload_to_blob(container_name, blob_name, file_path):
     try:
@@ -35,7 +36,5 @@ def upload_to_blob(container_name, blob_name, file_path):
         print(f"An error occurred: {e}")
 
 # Upload all JSON files in the data/raw directory
-for file_name in os.listdir(data_dir):
-    if file_name.endswith(".json"):
-        file_path = os.path.join(data_dir, file_name)
-        upload_to_blob(container_name, file_name, file_path)
+for file_path in data_dir.glob("*.json"):
+    upload_to_blob(container_name, file_path.name, file_path)
